@@ -20,6 +20,24 @@ go build -o wshare-admin ./cmd/wshare-admin
 
 On Windows, outputs are `wshare.exe` and `wshare-admin.exe`.
 
+### Prebuilt binaries (`bin/`)
+
+Cross-compiled release binaries (no CGO) live under [`bin/`](bin/):
+
+| File pattern | Platform |
+|--------------|----------|
+| `wshare-windows-amd64.exe` / `wshare-admin-windows-amd64.exe` | Windows x64 |
+| `wshare-windows-arm64.exe` / `wshare-admin-windows-arm64.exe` | Windows ARM64 |
+| `wshare-linux-amd64` / `wshare-admin-linux-amd64` | Linux x64 |
+| `wshare-linux-arm64` / `wshare-admin-linux-arm64` | Linux ARM64 |
+| `wshare-darwin-amd64` / `wshare-admin-darwin-amd64` | macOS Intel |
+| `wshare-darwin-arm64` / `wshare-admin-darwin-arm64` | macOS Apple Silicon |
+
+```bash
+# Rebuild all into bin/
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/wshare-linux-amd64 ./cmd/wshare
+```
+
 ## Share server
 
 ```bash

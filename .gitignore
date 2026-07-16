@@ -1,8 +1,11 @@
-# Build outputs
+# Local root build outputs (use bin/ for released cross-builds)
 /wshare
 /wshare.exe
 /wshare-admin
 /wshare-admin.exe
+/wshare.exe~
+/wshare-admin.exe~
+/dist/
 
 # Runtime database
 *.db
