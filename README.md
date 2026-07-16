@@ -52,24 +52,33 @@ Listening on port 8080
 - The home page lists **all files and folders** in the database, grouped by share root.
 - **`.gitignore`** and **`robots.txt`** (`Disallow` for `User-agent: *`) under the shared root are respected when scanning; matching paths are not added.
 - Paths that were shared but **no longer exist on disk** appear in **red**, without a download link. Clicking them shows a **“No Longer Available”** popup.
-- Available files download directly; available folders download as a **zip**.
+- **Files** download directly; each file’s download count is stored and shown in its row.
+- **Folders** open for normal browsing (breadcrumbs + parent link). A **zip** checkbox sits next to each folder; only when it is checked does **Download** produce a zip archive. Zip downloads are counted per folder and shown in the row.
 
 ## Admin console
+
+ServiceMonitor-style terminal UI (Bubble Tea + lipgloss): left **Shares** panel, right **Details**, bottom key help.
 
 ```bash
 ./wshare-admin
 ./wshare-admin -db ./wshare.db
 ```
 
-Interactive menu:
+| Key | Action |
+|-----|--------|
+| `↑`/`↓` or `j`/`k` | Select share |
+| `a` | Add file or directory |
+| `d` | Remove selected root (confirm `y`/`n`) |
+| `c` | Cleanup missing-on-disk entries |
+| `r` | Refresh |
+| `?` | About (slides in from the left) |
+| `q` | Quit |
 
-1. **List / browse** — roots and entries, with OK / MISSING status  
-2. **Add** file or directory (same ignore rules as the server)  
-3. **Remove** by entry ID, root ID, or path  
-4. **Cleanup** — delete DB rows for paths missing on disk  
-5. **Quit**
+The share server browser UI has the same **About** drawer (button in the title bar, or press `?`).
 
 Use the same `-db` / `WSHARE_DB` as the server so both tools share one catalog.
+
+The browser list uses the same layout language: title bar, left share list, right detail/entries panel, OK / MISS badges.
 
 ## Ignore rules
 

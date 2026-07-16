@@ -12,15 +12,16 @@ import (
 
 // Entry is a file or directory tracked for sharing.
 type Entry struct {
-	ID        int64
-	Path      string // absolute path on disk
-	Name      string // display name (base name)
-	IsDir     bool
-	Size      int64
-	ParentID  sql.NullInt64
-	RootID    int64
-	AddedAt   time.Time
-	Available bool // set when checking disk presence
+	ID            int64
+	Path          string // absolute path on disk
+	Name          string // display name (base name)
+	IsDir         bool
+	Size          int64
+	ParentID      sql.NullInt64
+	RootID        int64
+	AddedAt       time.Time
+	DownloadCount int64 // file downloads, or folder zip downloads
+	Available     bool  // set when checking disk presence
 }
 
 // Root is a top-level path that was shared (file or folder).
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS entries (
 	parent_id INTEGER,
 	root_id INTEGER NOT NULL,
 	added_at TEXT NOT NULL,
+	download_count INTEGER NOT NULL DEFAULT 0,
 	FOREIGN KEY (parent_id) REFERENCES entries(id) ON DELETE CASCADE,
 	FOREIGN KEY (root_id) REFERENCES roots(id) ON DELETE CASCADE
 );
@@ -95,6 +97,35 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE INDEX IF NOT EXISTS idx_entries_root ON entries(root_id);
 CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_id);
 `)
+	if err != nil {
+		return err
+	}
+	// Existing DBs created before download_count: add the column if missing.
+	return s.ensureColumn("entries", "download_count", "INTEGER NOT NULL DEFAULT 0")
+}
+
+func (s *Store) ensureColumn(table, column, decl string) error {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, decl))
 	return err
 }
 
@@ -174,18 +205,20 @@ func (s *Store) ListRoots() ([]Root, error) {
 	return out, rows.Err()
 }
 
+const entrySelectCols = `id, path, name, is_dir, size, parent_id, root_id, added_at, download_count`
+
 // ListEntries returns all entries, optionally filtered by root ID (0 = all).
 func (s *Store) ListEntries(rootID int64) ([]Entry, error) {
 	var rows *sql.Rows
 	var err error
 	if rootID > 0 {
 		rows, err = s.db.Query(
-			`SELECT id, path, name, is_dir, size, parent_id, root_id, added_at
+			`SELECT `+entrySelectCols+`
 			 FROM entries WHERE root_id = ? ORDER BY is_dir DESC, name COLLATE NOCASE`, rootID,
 		)
 	} else {
 		rows, err = s.db.Query(
-			`SELECT id, path, name, is_dir, size, parent_id, root_id, added_at
+			`SELECT `+entrySelectCols+`
 			 FROM entries ORDER BY root_id, is_dir DESC, name COLLATE NOCASE`,
 		)
 	}
@@ -202,13 +235,13 @@ func (s *Store) ListChildren(rootID int64, parentID *int64) ([]Entry, error) {
 	var err error
 	if parentID == nil || *parentID == 0 {
 		rows, err = s.db.Query(
-			`SELECT id, path, name, is_dir, size, parent_id, root_id, added_at
+			`SELECT `+entrySelectCols+`
 			 FROM entries WHERE root_id = ? AND parent_id IS NULL
 			 ORDER BY is_dir DESC, name COLLATE NOCASE`, rootID,
 		)
 	} else {
 		rows, err = s.db.Query(
-			`SELECT id, path, name, is_dir, size, parent_id, root_id, added_at
+			`SELECT `+entrySelectCols+`
 			 FROM entries WHERE root_id = ? AND parent_id = ?
 			 ORDER BY is_dir DESC, name COLLATE NOCASE`, rootID, *parentID,
 		)
@@ -223,13 +256,34 @@ func (s *Store) ListChildren(rootID int64, parentID *int64) ([]Entry, error) {
 // GetEntry returns a single entry by ID.
 func (s *Store) GetEntry(id int64) (*Entry, error) {
 	row := s.db.QueryRow(
-		`SELECT id, path, name, is_dir, size, parent_id, root_id, added_at FROM entries WHERE id = ?`, id,
+		`SELECT `+entrySelectCols+` FROM entries WHERE id = ?`, id,
 	)
 	e, err := scanEntry(row)
 	if err != nil {
 		return nil, err
 	}
 	return e, nil
+}
+
+// IncrementDownloadCount adds one to the entry's download counter
+// (file download or folder zip download) and returns the new total.
+func (s *Store) IncrementDownloadCount(id int64) (int64, error) {
+	res, err := s.db.Exec(
+		`UPDATE entries SET download_count = download_count + 1 WHERE id = ?`, id,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if n == 0 {
+		return 0, sql.ErrNoRows
+	}
+	var count int64
+	err = s.db.QueryRow(`SELECT download_count FROM entries WHERE id = ?`, id).Scan(&count)
+	return count, err
 }
 
 // GetRoot returns a root by ID.
@@ -373,7 +427,7 @@ func scanEntry(row rowScanner) (*Entry, error) {
 	var e Entry
 	var isDir int
 	var added string
-	if err := row.Scan(&e.ID, &e.Path, &e.Name, &isDir, &e.Size, &e.ParentID, &e.RootID, &added); err != nil {
+	if err := row.Scan(&e.ID, &e.Path, &e.Name, &isDir, &e.Size, &e.ParentID, &e.RootID, &added, &e.DownloadCount); err != nil {
 		return nil, err
 	}
 	e.IsDir = isDir == 1
