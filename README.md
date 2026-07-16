@@ -1,52 +1,88 @@
 # wShare
-========
 
-wShare was built to make file sharing within intranet easy.
+wShare makes file sharing on a local network easy. Paths you share are tracked in a **SQLite** database, listed in a browser UI, and filtered by **`.gitignore`** and **`robots.txt`**.
+
+## Tools
+
+| Binary | Purpose |
+|--------|---------|
+| `wshare` | Share server — add a path (optional), serve download list |
+| `wshare-admin` | Cross-platform console to browse / add / remove / cleanup the DB |
+
+Both run on **Windows**, **Linux**, and **macOS**.
 
 ## Build
 
-1. `go get github.com/thewhitetulip/wshare`
-2. `go build`
+```bash
+go build -o wshare ./cmd/wshare
+go build -o wshare-admin ./cmd/wshare-admin
+```
 
+On Windows, outputs are `wshare.exe` and `wshare-admin.exe`.
 
-## Working
+## Share server
 
-Call the binary in the following way:
+```bash
+# Add a file or folder and start the server
+./wshare -f ./photos
+./wshare -f report.pdf
 
-`./wshare -f <filename> -t <number>`
+# Or only serve what is already in the database
+./wshare
 
-eg:   `./wshare -f classical.pdf`
+# Options
+./wshare -f ./docs -p 8080 -db ./wshare.db
+```
 
-where `filename` is the name of the file and `number` is the number of 
-times the file is expected to be downloaded.
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-f` | _(none)_ | File or folder to add to the DB before serving |
+| `-p` | `8080` | Preferred port; if busy, tries 8081, 8082, … |
+| `-db` | `./wshare.db` | SQLite database path (`WSHARE_DB` env also works) |
 
-If you want to share a folder, then provide the folder name after the `-f` flag, the folder will be
-compressed and that zip file will be shared.
+When the server starts it prints the LAN and localhost URLs, e.g.:
 
-When you run the command as above, it'll give a URL like
- 
->download link: http://127.0.0.1:8080/share/classical.pdf
+```text
+Share list:  http://192.168.1.10:8080/
+Listening on port 8080
+```
 
->Running server on port 8080
+### Listing behaviour
 
-this link can be used to download the file over any browser or a 
-download manager if you are using *nix and have wget then do a 
+- The home page lists **all files and folders** in the database, grouped by share root.
+- **`.gitignore`** and **`robots.txt`** (`Disallow` for `User-agent: *`) under the shared root are respected when scanning; matching paths are not added.
+- Paths that were shared but **no longer exist on disk** appear in **red**, without a download link. Clicking them shows a **“No Longer Available”** popup.
+- Available files download directly; available folders download as a **zip**.
 
-`wget http://127.0.0.1:8080/share/classical.pdf`
+## Admin console
 
-## TODO
-1. easy way to share with mobile devices which don't support zip
+```bash
+./wshare-admin
+./wshare-admin -db ./wshare.db
+```
 
-## Contributing:
+Interactive menu:
 
-Pull requests are welcome. If you are a first time open source contributor, 
-don't hesitate to open an issue, and let's discuss, I don't bite!
+1. **List / browse** — roots and entries, with OK / MISSING status  
+2. **Add** file or directory (same ignore rules as the server)  
+3. **Remove** by entry ID, root ID, or path  
+4. **Cleanup** — delete DB rows for paths missing on disk  
+5. **Quit**
 
+Use the same `-db` / `WSHARE_DB` as the server so both tools share one catalog.
 
-wShare is intended to used for sharing files within the network, there are two ways you can share files, a single file 
-mode and a multiple file mode, above mentioned is the example for single file mode, if you have to share multiple files then
-use the directory mode and share the directory, the application will zip it and allow it to be downloaded, either that or compress
-the respective files and share the one zip file, the choice is yours, the application is designed to suit to the user's preferecnes
-and not the other way round!
- 
-LICENSE: MIT
+## Ignore rules
+
+When adding a directory (or a file’s parent tree):
+
+- **`.gitignore`** at the share root (plus always-ignored `.git/`, `wshare.db*`)
+- **`robots.txt`** `Disallow:` lines for `User-agent: *` (or `wshare`)
+- The files `.gitignore` and `robots.txt` themselves are not listed for download
+
+## Legacy single-file mode
+
+Older wShare used a one-shot map and fixed port 8080. The new flow always uses the SQLite catalog and the HTML list so multiple shares accumulate across runs.
+
+## License
+
+MIT

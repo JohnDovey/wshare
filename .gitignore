@@ -1,0 +1,14 @@
+# Build outputs
+/wshare
+/wshare.exe
+/wshare-admin
+/wshare-admin.exe
+
+# Runtime database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Local test fixtures
+/testdata_share/
